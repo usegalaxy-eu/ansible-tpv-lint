@@ -1,0 +1,5 @@
+---
+- name: Execute lint and copy script
+  ansible.builtin.script: "{{ tpv_mutable_dir }}/tpv-lint-and-copy.sh"
+  register: tpv_lint
+  failed_when: tpv_lint.rc >= 0
