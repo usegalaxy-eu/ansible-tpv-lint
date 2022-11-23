@@ -6,7 +6,7 @@ name: Ansible-lint
 
 defaults:
   run:
-    working-directory: 'ansible-tpv'
+    working-directory: 'ansible-tpv-lint'
 
 jobs:
   ansible-lint:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
-          path: 'infrastructure-playbook'
+          path: 'ansible-tpv-lint'
       - name: Set up Python
         uses: actions/setup-python@v4
         with:

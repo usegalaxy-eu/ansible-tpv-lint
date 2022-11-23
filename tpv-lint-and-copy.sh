@@ -5,7 +5,9 @@ PYTHONPATH="/opt/galaxy/server/lib"
 VENV="/opt/galaxy/venv"
 TPV_DIR="/opt/galaxy/config/total_perspective_vortex"
 GALAXY_CONF_DIR="/opt/galaxy/config"
+
 . $VENV/bin/activate
+
 for f in *.yml; do
         if PYTHONPATH=$PYTHONPATH tpv lint "$f"; then
                 echo "lint successful, checking job_conf..."
