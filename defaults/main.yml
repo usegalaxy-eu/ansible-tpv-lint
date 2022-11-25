@@ -1,2 +1,3 @@
 tpv_mutable_dir: "{{ galaxy_mutable_data_dir }}/total_perspective_vortex"
 tpv_config_dir_name: TPV_DO_NOT_TOUCH
+tpv_config_dir: "{{ galaxy_config_dir }}/{{ tpv_config_dir_name }}"
