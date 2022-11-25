@@ -3,25 +3,27 @@
 
 PYTHONPATH="{{ galaxy_root }}/server/lib"
 VENV="{{ galaxy_venv_dir }}"
-TPV_DIR="{{ galaxy_config_dir }}/{{ tpv_config_dir_name }}"
+TPV_MUTABLE_DIR="{{ tpv_mutable_dir }}"
+TPV_DIR="{{ tpv_config_dir }}"
 TPV_DIR_NAME="{{ tpv_config_dir_name }}"
 GALAXY_CONF_DIR="{{ galaxy_config_dir }}"
 
 . $VENV/bin/activate
 
-for f in *.yml; do
+for f in "$TPV_MUTABLE_DIR"/*.yml; do
+        FNAME=$(basename "$f")
         if PYTHONPATH=$PYTHONPATH tpv lint "$f"; then
                 echo "lint successful, checking job_conf..."
-                if grep -q "$TPV_DIR_NAME/$f" "$GALAXY_CONF_DIR/job_conf.yml"; then
-                        echo "$f is present in job_conf, copying..."
+                if grep -q "$TPV_DIR_NAME/$FNAME" "$GALAXY_CONF_DIR/job_conf.yml"; then
+                        echo "$FNAME is present in job_conf, copying..."
                         [[ $(type -t cp) == "alias" ]] && unalias cp
-                        cp -bu "$f" "$TPV_DIR/$f"
+                        cp -bu "$f" "$TPV_DIR/$FNAME"
                 else
-                        echo "$f is not present in job_conf, exiting..."
+                        echo "$FNAME is not present in job_conf, exiting..."
                         exit 3 && true
                 fi
         else
-                echo "lint failed, '$f' was not copied"
+                echo "lint failed, '$FNAME' was not copied"
                 exit 3 && true
     fi
 done
