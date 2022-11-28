@@ -16,6 +16,5 @@
     mode: 0750
 
 - name: Execute TPV lint-and-copy-script
-  ansible.builtin.script: "{{ tpv_mutable_dir }}/tpv-lint-and-copy.sh"
-  register: tpv_lint
-  failed_when: tpv_lint.rc >= 0
+  ansible.builtin.command:
+    cmd: "{{ tpv_mutable_dir }}/tpv-lint-and-copy.sh"
