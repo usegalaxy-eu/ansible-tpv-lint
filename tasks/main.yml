@@ -4,8 +4,6 @@
     state: directory
     path: "{{ tpv_mutable_dir }}"
     mode: 0755
-    owner: "{{ __galaxy_user_name }}"
-    group: "{{ __galaxy_user_group }}"
 
 - name: Copy TPV lint-and-copy-script
   ansible.builtin.template:
