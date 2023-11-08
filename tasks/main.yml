@@ -1,18 +1,65 @@
 ---
+
 - name: Create TPV mutable dir
   ansible.builtin.file:
     state: directory
     path: "{{ tpv_mutable_dir }}"
     mode: 0755
 
-- name: Copy TPV lint-and-copy-script
-  ansible.builtin.template:
-    src: tpv-lint-and-copy.sh.j2
-    dest: "{{ tpv_mutable_dir }}/tpv-lint-and-copy.sh"
-    owner: root
-    group: root
-    mode: 0750
+- name: Stage TPV configs (copy)
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ tpv_mutable_dir }}/{{ item | basename }}"
+    # TODO: privsep
+  loop: "{{ tpv_configs }}"
+  when: not item.endswith(".j2")
 
-- name: Execute TPV lint-and-copy-script
+- name: Stage TPV configs (template)
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "{{ tpv_mutable_dir }}/{{ item | basename | splitext | first }}"
+    # TODO: privsep
+  loop: "{{ tpv_configs }}"
+  when: item.endswith(".j2")
+
+- name: Verify that TPV configs appear in Galaxy job configuration
+  ansible.builtin.lineinfile:
+    path: "{{ galaxy_job_config_file }}"
+    regexp: '^(\s+-\s*["'']?{{ tpv_config_dir }}/{{ item.endswith(".j2") | ternary(item | basename | splitext | first, item | basename) }}["'']?\s*)$'
+    state: absent
+  check_mode: true
+  diff: false
+  loop: "{{ tpv_configs }}"
+  register: __tpv_config_is_configured
+  changed_when: false
+  failed_when: not __tpv_config_is_configured.found
+
+- name: Run TPV lint
   ansible.builtin.command:
-    cmd: "{{ tpv_mutable_dir }}/tpv-lint-and-copy.sh"
+    cmd: "{{ galaxy_venv_dir }}/bin/tpv lint {{ tpv_mutable_dir }}/{{ item.endswith('.j2') | ternary(item | basename | splitext | first, item | basename) }}"
+  environment:
+    PYTHONPATH: "{{ galaxy_server_dir }}/lib"
+  loop: "{{ tpv_configs }}"
+  changed_when: false
+
+- name: Create TPV config dir
+  ansible.builtin.file:
+    state: directory
+    path: "{{ tpv_config_dir }}"
+    mode: 0755
+
+- name: Deploy TPV configs (copy)
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ tpv_config_dir }}/{{ item | basename }}"
+    # TODO: privsep
+  loop: "{{ tpv_configs }}"
+  when: not item.endswith(".j2")
+
+- name: Stage TPV configs (template)
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "{{ tpv_config_dir }}/{{ item | basename | splitext | first }}"
+    # TODO: privsep
+  loop: "{{ tpv_configs }}"
+  when: item.endswith(".j2")

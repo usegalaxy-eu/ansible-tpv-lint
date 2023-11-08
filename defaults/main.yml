@@ -1,5 +1,14 @@
+---
+
+# path in playbook, can be templates (suffix with .j2) or regular files
+tpv_configs: []
+
+# this is the path this role will read staged (by galaxyproject.galaxy) TPV configs from
 tpv_mutable_dir: "{{ galaxy_mutable_data_dir }}/total_perspective_vortex"
+
+# this is the path where this role copies TPV configs to and Galaxy reads TPV configs from
 tpv_config_dir_name: TPV_DO_NOT_TOUCH
 tpv_config_dir: "{{ galaxy_config_dir }}/{{ tpv_config_dir_name }}"
+
 galaxy_job_config_file: "{{ galaxy_config_dir }}/job_conf.yml"
 tpv_privsep: false
