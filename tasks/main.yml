@@ -1,18 +1,154 @@
 ---
+
 - name: Create TPV mutable dir
   ansible.builtin.file:
     state: directory
     path: "{{ tpv_mutable_dir }}"
     mode: 0755
 
-- name: Copy TPV lint-and-copy-script
-  ansible.builtin.template:
-    src: tpv-lint-and-copy.sh.j2
-    dest: "{{ tpv_mutable_dir }}/tpv-lint-and-copy.sh"
-    owner: root
-    group: root
-    mode: 0750
+- name: Stage TPV configs (copy)
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ tpv_mutable_dir }}/{{ item | basename }}"
+    # TODO: privsep
+  loop: "{{ tpv_configs }}"
+  when: not item.endswith(".j2")
 
-- name: Execute TPV lint-and-copy-script
+- name: Stage TPV configs (template)
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "{{ tpv_mutable_dir }}/{{ item | basename | splitext | first }}"
+    # TODO: privsep
+  loop: "{{ tpv_configs }}"
+  when: item.endswith(".j2")
+
+- name: Verify that TPV configs appear in Galaxy job configuration
+  ansible.builtin.lineinfile:
+    path: "{{ galaxy_job_config_file }}"
+    regexp: '^(\s+-\s*["'']?{{ tpv_config_dir }}/{{ item.endswith(".j2") | ternary(item | basename | splitext | first, item | basename) }}["'']?\s*)$'
+    state: absent
+  check_mode: true
+  diff: false
+  loop: "{{ tpv_configs }}"
+  register: __tpv_config_is_configured
+  changed_when: false
+  failed_when: not __tpv_config_is_configured.found
+
+- name: Run TPV lint
   ansible.builtin.command:
-    cmd: "{{ tpv_mutable_dir }}/tpv-lint-and-copy.sh"
+    cmd: "{{ galaxy_venv_dir }}/bin/tpv lint {{ tpv_mutable_dir }}/{{ item.endswith('.j2') | ternary(item | basename | splitext | first, item | basename) }}"
+  environment:
+    PYTHONPATH: "{{ galaxy_server_dir }}/lib"
+  loop: "{{ tpv_configs }}"
+  changed_when: false
+
+- name: TPV dry-run
+  when: tpv_dry_run
+  block:
+    # Mode: new tools only — compare local configs against what is deployed
+    - name: Read deployed TPV config files
+      ansible.builtin.slurp:
+        src: "{{ tpv_config_dir }}/{{ _tpv_fname }}"
+      vars:
+        _tpv_fname: "{{ item.endswith('.j2') | ternary(item | basename | splitext | first, item | basename) }}"
+      loop: "{{ tpv_configs }}"
+      register: __tpv_deployed_configs
+      failed_when: false
+      when: not tpv_dry_run_all_tools
+
+    - name: Collect new TPV tool IDs for dry-run
+      ansible.builtin.set_fact:
+        __tpv_dry_run_tools: >-
+          {{
+            (__tpv_dry_run_tools | default([]))
+            + ((_local.tools | default({}) | list)
+               | difference(_deployed.tools | default({}) | list))
+          }}
+      vars:
+        _local: "{{ (lookup('template', _tpv_pair[0]) if _tpv_pair[0].endswith('.j2') else lookup('file', _tpv_pair[0])) | from_yaml }}"
+        _deployed: "{{ (_tpv_pair[1].content | b64decode | from_yaml) if _tpv_pair[1].content is defined else {} }}"
+      loop: "{{ tpv_configs | zip(__tpv_deployed_configs.results) | list }}"
+      loop_control:
+        loop_var: _tpv_pair
+      when: not tpv_dry_run_all_tools
+
+    # Mode: all tools — gather every non-abstract tool from local and remote configs
+    - name: Collect all TPV tool IDs from local configs for dry-run
+      ansible.builtin.set_fact:
+        __tpv_dry_run_tools: >-
+          {{
+            (__tpv_dry_run_tools | default([]))
+            + (_local.tools | default({}) | dict2items
+               | rejectattr('value.abstract', 'defined')
+               | map(attribute='key') | list)
+          }}
+      vars:
+        _local: "{{ (lookup('template', item) if item.endswith('.j2') else lookup('file', item)) | from_yaml }}"
+      loop: "{{ tpv_configs }}"
+      when: tpv_dry_run_all_tools
+
+    - name: Collect all TPV tool IDs from remote configs for dry-run
+      ansible.builtin.set_fact:
+        __tpv_dry_run_tools: >-
+          {{
+            (__tpv_dry_run_tools | default([]))
+            + ((lookup('url', item) | from_yaml).tools | default({}) | dict2items
+               | rejectattr('value.abstract', 'defined')
+               | map(attribute='key') | list)
+          }}
+      loop: "{{ tpv_dry_run_remote_configs }}"
+      when: tpv_dry_run_all_tools
+
+    - name: Write temporary job_conf.yml for TPV dry-run
+      ansible.builtin.tempfile:
+        suffix: _job_conf.yml
+      register: __tpv_dry_run_job_conf_tmp
+
+    - name: Populate temporary job_conf.yml for TPV dry-run
+      ansible.builtin.copy:
+        content: "{{ galaxy_job_config | to_nice_yaml }}"
+        dest: "{{ __tpv_dry_run_job_conf_tmp.path }}"
+
+    - name: Run TPV dry-run
+      ansible.builtin.command:
+        cmd: >-
+          {{ galaxy_venv_dir }}/bin/tpv dry-run
+          --job-conf {{ __tpv_dry_run_job_conf_tmp.path }}
+          --tool {{ tpv_tool }}
+          {{ ('--user ' + tpv_dry_run_user) if tpv_dry_run_user else '' }}
+      environment:
+        PYTHONPATH: "{{ galaxy_server_dir }}/lib"
+      loop: "{{ __tpv_dry_run_tools | default([]) | unique }}"
+      loop_control:
+        loop_var: tpv_tool
+      changed_when: false
+      ignore_errors: "{{ tpv_dry_run_ignore_errors }}"
+
+  always:
+    - name: Remove temporary job_conf.yml
+      ansible.builtin.file:
+        path: "{{ __tpv_dry_run_job_conf_tmp.path }}"
+        state: absent
+      when: __tpv_dry_run_job_conf_tmp is defined
+
+- name: Create TPV config dir
+  ansible.builtin.file:
+    state: directory
+    path: "{{ tpv_config_dir }}"
+    mode: 0755
+
+- name: Deploy TPV configs (copy)
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ tpv_config_dir }}/{{ item | basename }}"
+    # TODO: privsep
+  loop: "{{ tpv_configs }}"
+  when: not item.endswith(".j2")
+
+- name: Stage TPV configs (template)
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "{{ tpv_config_dir }}/{{ item | basename | splitext | first }}"
+    # TODO: privsep
+  loop: "{{ tpv_configs }}"
+  when: item.endswith(".j2")
