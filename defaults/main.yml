@@ -5,4 +5,4 @@ galaxy_job_config_file: "{{ galaxy_config_dir }}/job_conf.yml"
 tpv_privsep: false
 tpv_user: root
 tpv_group: root
-tpv_perms: 0750
+tpv_perms: "0750"

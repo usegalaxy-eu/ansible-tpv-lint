@@ -3,7 +3,7 @@
   ansible.builtin.file:
     state: directory
     path: "{{ tpv_mutable_dir }}"
-    mode: 0755
+    mode: "0755"
 
 - name: Copy TPV lint-and-copy-script
   ansible.builtin.template:
@@ -16,3 +16,5 @@
 - name: Execute TPV lint-and-copy-script
   ansible.builtin.command:
     cmd: "{{ tpv_mutable_dir }}/tpv-lint-and-copy.sh"
+  register: tpv_lint_and_copy_result
+  changed_when: "'copied:' in tpv_lint_and_copy_result.stdout"
