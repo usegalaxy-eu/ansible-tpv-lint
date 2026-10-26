@@ -10,25 +10,27 @@ JOB_CONFIG_FILE="{{ galaxy_job_config_file }}"
 
 . $VENV/bin/activate
 
-for f in "$TPV_MUTABLE_DIR"/*.yml; do
-        FNAME=$(basename "$f")
-        if PYTHONPATH=$PYTHONPATH tpv lint "$f"; then
-                echo "lint successful, checking job configuration..."
-                if grep -q "$TPV_DIR_NAME/$FNAME" "$JOB_CONFIG_FILE"; then
-                        if cmp -s "$f" "$TPV_DIR/$FNAME"; then
-                                echo "$FNAME is already up to date"
-                        else
-                                echo "$FNAME is present in job configuration, copying..."
-                                [[ $(type -t cp) == "alias" ]] && unalias cp
-                                cp -b "$f" "$TPV_DIR/$FNAME" {% if tpv_privsep %}&& chown root:{{ __galaxy_user_group }} "$TPV_DIR/$FNAME" {% endif %}&& echo "copied: $FNAME"
-                        fi
+shopt -s nullglob
+files=("$TPV_MUTABLE_DIR"/*.yml "$TPV_MUTABLE_DIR"/*.yaml)
 
+if ((${#files[@]})) && ! PYTHONPATH=$PYTHONPATH tpv lint "${files[@]}"; then
+        echo "lint failed, no files were copied"
+        exit 3 && true
+fi
+
+for f in "${files[@]}"; do
+        FNAME=$(basename "$f")
+        echo "lint successful, checking job configuration..."
+        if grep -q "$TPV_DIR_NAME/$FNAME" "$JOB_CONFIG_FILE"; then
+                if cmp -s "$f" "$TPV_DIR/$FNAME"; then
+                        echo "$FNAME is already up to date"
                 else
-                        echo "$FNAME is not present in job configuration, exiting..."
-                        exit 3 && true
+                        echo "$FNAME is present in job configuration, copying..."
+                        [[ $(type -t cp) == "alias" ]] && unalias cp
+                        cp -b "$f" "$TPV_DIR/$FNAME" {% if tpv_privsep %}&& chown root:{{ __galaxy_user_group }} "$TPV_DIR/$FNAME" {% endif %}&& echo "copied: $FNAME"
                 fi
         else
-                echo "lint failed, '$FNAME' was not copied"
+                echo "$FNAME is not present in job configuration, exiting..."
                 exit 3 && true
-    fi
+        fi
 done
