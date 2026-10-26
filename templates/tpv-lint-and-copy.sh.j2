@@ -13,7 +13,7 @@ JOB_CONFIG_FILE="{{ galaxy_job_config_file }}"
 shopt -s nullglob
 files=("$TPV_MUTABLE_DIR"/*.yml "$TPV_MUTABLE_DIR"/*.yaml)
 
-if ((${#files[@]})) && ! PYTHONPATH=$PYTHONPATH tpv lint "${files[@]}"; then
+if ((${% raw %}{#files[@]}{% endraw %})) && ! PYTHONPATH=$PYTHONPATH tpv lint "${files[@]}"; then
         echo "lint failed, no files were copied"
         exit 3 && true
 fi
